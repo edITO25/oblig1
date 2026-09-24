@@ -1,0 +1,127 @@
+#navnet på workflowen 
+name: Rull ut nettverk 
+
+#ruller ut nettverks-stacken til dev automatisk med pucj
+#ruller ut nettverks-stacken til test bar når det velges manuellt 
+#ikke et eneste storage account-navn, en eneste parameterverdi eller passord i fila 
+ 
+
+on: #workflowen trigges på to måter push eller manuelt 
+  push:
+    branches: [main]  #automatisk ved push til main 
+    paths: #dersom endringer treffer destinasjoner definert i paths
+      - '/stacks/nettverk/**'
+      - '/modules/network/**'
+      - '/shared/backend.hcl'
+      - '/deploy-nettverk.yml'
+ 
+  #manuelt, der man velger dev eller test fra en nedtrekksliste 
+  workflow_dispatch: #Manuell kjøring fraf GitHub-UI 
+    inputs:
+      environment: 
+        description: Miljø - gjelder bare ved manuell kjøring
+        type: choice  #må velge en av alternativene, dev eller test 
+        options: [dev, test] #ikke god nok til å rulle ut i prod
+        default: dev
+ 
+permissions:
+  id-token: write #gir workflowen lov til å be GitHub om en OIDC-token
+  #brukes av azure/login og terraform -provideren til å autentisere mot Azure uten passord/hemmelige nøkler 
+  contents: read #lov til å lese innholdet i repoet 
+ 
+concurrency:  #Sørger for kun én kjøring per miljø 
+  #dev og test kan kjøre parallelt 
+  #kø dersom samme miljø skal kjøres 
+  group: nettverk-${{ inputs.environment || 'dev' }}
+  cancel-in-progress: false  #pågående kjøring får fullføre i stedet for å bli avbrutt av en ny 
+ 
+jobs:  #en jobb i denne workflowen  
+  deploy:  #navnet på jobben 
+    runs-on: ubuntu-latest  #GitHub-runner med Ubuntu 
+    #kobler workflowen til riktig Github environment 
+    #gir tilgang til environment-spesifikke secrets 
+    environment: ${{ inputs.environment || 'dev' }}
+ 
+    defaults:
+      run:
+        #her run-steg skjer 
+        working-directory: stacks/nettverk #alle run-steg kjører fra stacks/nettverk
+      #slipper å skrive cd stacks/nettverk i hvert steg 
+ 
+    env:
+      MILJO: ${{ inputs.environment || 'dev' }} #sier hvilket miljø du jobber mot 
+ 
+      # ARM_* variablene brukes av Terraform azurerm-provideren for å autentisere mot Azure 
+      #når den skal opprette ressurser 
+      ARM_USE_OIDC: true  #Forteller provideren at den skal bruke OIDc-tokenet, ikke client secret 
+      #hentes fra secrets, ikke hardkodet 
+      ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }} 
+      ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+ 
+      TF_INPUT: false #Terraform feiler i stedet for å bli stående og vente på input, hvis noe mangler 
+      TF_IN_AUTOMATION: true #justerer Terraform output for automatisert kjøring 
+ 
+    steps: #stegene i jobben 
+      - name: Hent koden  
+        uses: actions/checkout@v5 #kloner repoet inn på runneren 
+ 
+      - name: Installer Terraform 
+        uses: hashicorp/setup-terraform@v3  #installerer riktig Terraform-versjon 
+        with:
+          terraform_wrapper: false  #Slår av Hasicopr sin wrapper som kan endre output 
+ 
+      - name: Logg inn i Azure
+        uses: azure/login@v2 
+        #Denne actionen:
+          #ber GitHub om et OIDC-token, tillat pga id-token: write 
+          #sender tokenet til Azure 
+          #Azure undersøker om tokenet kommer fra riktig repo/branch/environment
+          #og at det matcher med federated credentials 
+          #Stemmer = jobben får en kortvarig Azure-session  
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+ 
+        #istedenfor at .tfvars-filen ligger i repoet, hentes den fra key vault 
+      - name: Hent parameterfila fra Key Vault
+        run: |
+          az keyvault secret show \
+            --vault-name "${{ secrets.KEYVAULT_NAME }}" \
+            --name "tfvars-$MILJO-nettverk" \
+            --query value -o tsv > params.auto.tfvars
+ 
+      #bruker backend.hcl for å koble til backend 
+      - name: Init
+        run: |
+          terraform init \
+            -backend-config="${{ github.workspace }}/shared/backend.hcl" \
+            -backend-config="key=env/$MILJO/nettverk.tfstate"  
+      #Pathen til nettverk.tfstate 
+ 
+      - name: Validate 
+        run: terraform validate #sjekker at konfigurasjonen er syntaktisk og semantisk gyldig før du planlegger/apply
+ 
+      - name: Plan  
+        run: terraform plan #viser hva som kommer til å skje 
+ 
+      - name: Apply
+        run: terraform apply -auto-approve  #utfører endringene automatisk 
+        #ruller ut nettverks-stacken til valgt miljø 
+ 
+
+      - name: Verifiser at nettverket finnes i Azure
+        run: |
+          RG=$(terraform output -raw resource_group_name)
+          VNET=$(terraform output -raw vnet_name)
+          STATE=$(az network vnet show --resource-group "$RG" --name "$VNET" \
+                    --query provisioningState -o tsv)
+          echo "$VNET i $RG: $STATE"
+          test "$STATE" = "Succeeded"
+
+    #params.auto.tfvars er hentet rett fra Key Valut og kan inneholde sensitve verdier for miljøet 
+      - name: Slett parameterfila
+        if: always()  #Steget kjører uansett om tidligere steg feilet eller ikke 
+        run: rm -f params.auto.tfvars  #sletter tfvars-filen fra runneren 
+        #hemmeligheter ligger kun i key vaultet, midlertidelige på runneren under kjøring og blir fjernet etterpå 

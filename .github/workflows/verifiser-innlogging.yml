@@ -1,0 +1,61 @@
+#Del A: den minste workflowen som finnes: logg inn og si hvem du ble 
+#Bevise at Azure stoler på GitHub via OIDC-tokens
+
+
+#jobben trenger et OIDC-token for å kunne logge inn 
+#må be om OIDC-tokenet 
+
+
+#Får bare lov til å be om OIDC-tokenet dersom workflowen har gitt den lov
+
+run-name: Verifiser innlogging mot Azure 
+
+on: #Hvordan workflowen starter -> on definerer hvilke hendelser som starter wokflowen 
+#ikke push -> fordi vi trenger kun å bekrefte dette en gang 
+
+  workflow_dispatch: #Betyr at workflowen starter manuelt fra GitHub-UI 
+    inputs:
+      environment: 
+        description: Hvilket miljø skal testes
+        type: choice  #Brukeren må velge én av flere verdier 
+        options: [dev, test]  #Tilatte verdier 
+        required: true  #Du må velge miljø før workflowen kan startes 
+
+permissions: #Styrer hva GITHUB-TOKEN og workflowen har lov til å gjøre 
+  id-token: write  #Gir workflowen lov til å be GitHub om et OIDC-ID-token 
+  contents: read #Workflowen kan lese repo-innhold
+  #Ingen skrive-tilgang 
+
+
+jobs: #Samling av jobber i workflowen 
+  verifiser: #Navnet på jobben 
+    runs-on: ubuntu-latest #GitHub kjører jobben på en Ubuntu-runner 
+    environment: ${{ inputs.environment }}  #binder jobben til GitHub-environmenten du valgte (dev eller test)
+
+    steps: #En jobb består av flere steg
+      - name: Logg inn i Azure 
+        uses: azure/login@v2
+        #Denne actionen:
+          #ber GitHub om et OIDC-token, tillat pga id-token: write 
+          #sender tokenet til Azure 
+          #Azure undersøker om tokenet kommer fra riktig repo/branch/environment
+          #og at det matcher med federated credentials 
+          #Stemmer = jobben får en kortvarig Azure-session 
+        with:
+        #disse verdiene ligger som GitHub-secrets, så de ikke eksponeres i klartekst 
+          client-id: ${{ secrets.AZURE_CLIENT_ID}}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID}}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID}}
+
+  #Azure stoler på OIDC-tokenet som GitHub utsteder
+
+
+      #Del F, forsøk 1: sammenlign denne utskriften med az account show 
+      #Samme abonnement, to helt ulike identiteter 
+
+      - name: Hvem er jeg? #beskriver navn 
+      #kjører en shell-kommando på ubuntu-runneren
+      #viser hvilken konto/identitet og hvilket abonnement CLI-en faktisk bruker  
+        run: az account show  
+
+
