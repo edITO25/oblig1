@@ -54,7 +54,7 @@ jobs: #2 jobber i denne workflowen
 
     defaults:
       run:
-        working-directory: oblig1/oppgave-1/stacks/app
+        working-directory: stacks/app
 
     env:
       MILJO: ${{ inputs.environment }}
