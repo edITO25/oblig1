@@ -1,10 +1,6 @@
 #navnet på workflowen 
 name: Rull ut app 
 
-#ruller ut nettverks-stacken til dev automatisk med pucj
-#ruller ut nettverks-stacken til test bar når det velges manuellt 
-#ikke et eneste storage account-navn, en eneste parameterverdi eller passord i fila 
-
 on:
   workflow_dispatch: #Manuell kjøring fra GitHub-UI
     inputs:
@@ -36,8 +32,8 @@ jobs:  #en jobb i denne workflowen
     defaults:
       run:
         #her run-steg skjer 
-        working-directory: stacks/app #alle run-steg kjører fra stacks/nettverk
-      #slipper å skrive cd stacks/nettverk i hvert steg 
+        working-directory: stacks/app #alle run-steg kjører fra stacks/app
+      #slipper å skrive cd stacks/app i hvert steg 
  
     env:
       MILJO: ${{ inputs.environment || 'dev' }} #sier hvilket miljø du jobber mot 
@@ -110,7 +106,7 @@ jobs:  #en jobb i denne workflowen
  
       - name: Apply
         run: terraform apply -auto-approve  #utfører endringene automatisk 
-        #ruller ut nettverks-stacken til valgt miljø 
+        #ruller ut app-stacken til valgt miljø 
  
 
       - name: Verifiser at VM finnes i Azure

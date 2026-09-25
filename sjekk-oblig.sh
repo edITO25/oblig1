@@ -305,9 +305,23 @@ fi
 K8_FUNN=""
 
 # Tydelige mønstre i arbeidsmappa.
+#
+# Selvtestene utelates fra søket. Grunnen står på linja under: det FØRSTE
+# mønsteret er en ren litteral, og skriptet du leser nå inneholder den - så
+# uten denne ekskluderingen finner kontrollen seg selv og melder AVVIK på et
+# repo som er helt rent. Kontrollen leser arbeidsmappa, ikke Git, så det
+# hjelper ikke å la være å committe skriptet.
+#
+# Begge filnavnene utelates, ikke bare dette ene: studenten laster gjerne ned
+# begge utgavene fra selvtest-sida og legger dem i samme mappe.
+#
+# De tre andre mønstrene er regexer og treffer ikke sin egen kildetekst -
+# etter `client_secret` står det en `[`, ikke et likhetstegn.
 for monster in 'AZURE_CREDENTIALS' 'client_secret[[:space:]]*=' 'access_key[[:space:]]*=' \
                'BEGIN [A-Z ]*PRIVATE KEY'; do
-  TREFF="$(grep -rIl --exclude-dir=.git --exclude-dir=.terraform -E "$monster" . 2>/dev/null | tr '\n' ' ')"
+  TREFF="$(grep -rIl --exclude-dir=.git --exclude-dir=.terraform \
+                --exclude='sjekk-oblig.sh' --exclude='Sjekk-Oblig.ps1' \
+                -E "$monster" . 2>/dev/null | tr '\n' ' ')"
   [[ -n "$TREFF" ]] && K8_FUNN="${K8_FUNN}[${monster}] i ${TREFF}"
 done
 
