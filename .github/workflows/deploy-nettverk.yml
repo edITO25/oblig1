@@ -10,10 +10,10 @@ on: #workflowen trigges på to måter push eller manuelt
   push:
     branches: [main]  #automatisk ved push til main 
     paths: #dersom endringer treffer destinasjoner definert i paths
-      - '/stacks/nettverk/**'
-      - '/modules/network/**'
-      - '/shared/backend.hcl'
-      - '/deploy-nettverk.yml'
+      - 'stacks/nettverk/**'
+      - 'modules/network/**'
+      - 'shared/backend.hcl'
+      - '.github/workflows/deploy-nettverk.yml'
  
   #manuelt, der man velger dev eller test fra en nedtrekksliste 
   workflow_dispatch: #Manuell kjøring fraf GitHub-UI 
